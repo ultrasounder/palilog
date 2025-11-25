@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Driller 2.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .loader {
+            border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6;
+            border-radius: 50%; width: 24px; height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Range Slider Styling */
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px;
+            border-radius: 50%; background: #3b82f6; margin-top: -6px; cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #e5e7eb; border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-slate-800 p-6 text-white text-center">
+            <h1 class="text-2xl font-bold tracking-tight"><i class="fas fa-wave-square mr-2 text-blue-400"></i>Audio Driller Pro</h1>
+            <p class="text-slate-400 text-xs uppercase tracking-widest mt-1">Smart Splitting & MP3 Export</p>
+        </div>
+
+        <!-- Controls -->
+        <div class="p-8 space-y-6">
+            
+            <!-- File Input -->
+            <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer relative group" id="drop-zone">
+                <input type="file" id="audio-file" accept="audio/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                <div class="text-gray-500 group-hover:text-blue-500 transition-colors">
+                    <i class="fas fa-music text-5xl mb-3"></i>
+                    <p id="file-label" class="text-sm font-bold">Drop Audio File Here</p>
+                    <p class="text-xs text-gray-400 mt-1">MP3, WAV, M4A supported</p>
+                </div>
+            </div>
+
+            <!-- Mode Selection -->
+            <div class="flex bg-gray-100 p-1 rounded-lg">
+                <button id="mode-fixed" class="flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-gray-800 transition-all">
+                    <i class="fas fa-clock mr-1"></i> Fixed Time
+                </button>
+                <button id="mode-smart" class="flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 transition-all">
+                    <i class="fas fa-brain mr-1"></i> Smart Silence
+                </button>
+            </div>
+
+            <!-- Dynamic Controls Area -->
+            <div class="bg-gray-50 rounded-lg p-5 border border-gray-200">
+                
+                <!-- Fixed Mode Controls -->
+                <div id="controls-fixed" class="grid grid-cols-2 gap-6">
+                    <div>
+                        <label class="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
+                            Chunk Length 
+                            <span class="text-blue-600" id="val-fixed-len">5s</span>
+                        </label>
+                        <input type="range" id="fixed-length" min="1" max="30" value="5" class="w-full">
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
+                            Repeats 
+                            <span class="text-blue-600" id="val-repeats">3x</span>
+                        </label>
+                        <input type="range" id="repeats" min="1" max="10" value="3" class="w-full">
+                    </div>
+                </div>
+
+                <!-- Smart Mode Controls (Hidden by default) -->
+                <div id="controls-smart" class="hidden space-y-4">
+                    <div>
+                        <label class="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
+                            Silence Sensitivity 
+                            <span class="text-blue-600" id="val-silence-thresh">Med</span>
+                        </label>
+                        <input type="range" id="silence-thresh" min="1" max="100" value="30" class="w-full">
+                        <p class="text-[10px] text-gray-400 mt-1">Lower = detects only dead silence. Higher = treats quiet noise as silence.</p>
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
+                            Min Pause Duration 
+                            <span class="text-blue-600" id="val-min-pause">0.4s</span>
+                        </label>
+                        <input type="range" id="min-pause" min="0.1" max="2.0" step="0.1" value="0.4" class="w-full">
+                    </div>
+                    <div>
+                         <label class="flex justify-between text-xs font-bold text-gray-500 uppercase mb-2">
+                            Repeats 
+                            <span class="text-blue-600" id="val-repeats-smart">3x</span>
+                        </label>
+                        <input type="range" id="repeats-smart" min="1" max="10" value="3" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="process-btn" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 px-4 rounded-xl transition duration-200 flex items-center justify-center shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                <span><i class="fas fa-magic mr-2"></i>Process Audio</span>
+            </button>
+
+            <!-- Status -->
+            <div id="status-area" class="hidden text-center text-sm font-medium text-gray-600 animate-pulse"></div>
+
+            <!-- Results -->
+            <div id="result-area" class="hidden animate-fade-in space-y-5 pt-4 border-t border-gray-200">
+                
+                <!-- Player & Speed Control -->
+                <div class="bg-blue-50 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="text-xs font-bold text-blue-800 uppercase">Preview</label>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xs font-bold text-blue-600 uppercase">Speed: <span id="speed-val">1.0x</span></span>
+                            <input type="range" id="playback-speed" min="0.5" max="2.0" step="0.1" value="1.0" class="w-24 accent-blue-600">
+                        </div>
+                    </div>
+                    <audio id="audio-player" controls class="w-full h-10 rounded"></audio>
+                </div>
+
+                <a id="download-link" class="block w-full bg-green-500 hover:bg-green-600 text-white text-center font-bold py-3 px-4 rounded-xl shadow-md transition duration-200">
+                    <i class="fas fa-download mr-2"></i>Download MP3
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- UI State Management ---
+        const els = {
+            fileInput: document.getElementById('audio-file'),
+            fileLabel: document.getElementById('file-label'),
+            processBtn: document.getElementById('process-btn'),
+            statusArea: document.getElementById('status-area'),
+            resultArea: document.getElementById('result-area'),
+            audioPlayer: document.getElementById('audio-player'),
+            downloadLink: document.getElementById('download-link'),
+            dropZone: document.getElementById('drop-zone'),
+            modeFixed: document.getElementById('mode-fixed'),
+            modeSmart: document.getElementById('mode-smart'),
+            controlsFixed: document.getElementById('controls-fixed'),
+            controlsSmart: document.getElementById('controls-smart'),
+            playbackSpeed: document.getElementById('playback-speed'),
+            speedVal: document.getElementById('speed-val'),
+            // Inputs
+            fixedLength: document.getElementById('fixed-length'),
+            repeats: document.getElementById('repeats'),
+            repeatsSmart: document.getElementById('repeats-smart'),
+            silenceThresh: document.getElementById('silence-thresh'),
+            minPause: document.getElementById('min-pause'),
+            // Value Labels
+            valFixedLen: document.getElementById('val-fixed-len'),
+            valRepeats: document.getElementById('val-repeats'),
+            valRepeatsSmart: document.getElementById('val-repeats-smart'),
+            valSilenceThresh: document.getElementById('val-silence-thresh'),
+            valMinPause: document.getElementById('val-min-pause')
+        };
+
+        let audioContext = null;
+        let selectedFile = null;
+        let processingMode = 'fixed'; // 'fixed' or 'smart'
+
+        // --- Event Listeners ---
+
+        // File Selection
+        els.fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                els.fileLabel.innerHTML = `<span class="text-blue-600 break-all">${selectedFile.name}</span>`;
+                resetUI();
+            }
+        });
+
+        // Mode Switching
+        els.modeFixed.addEventListener('click', () => switchMode('fixed'));
+        els.modeSmart.addEventListener('click', () => switchMode('smart'));
+
+        function switchMode(mode) {
+            processingMode = mode;
+            if (mode === 'fixed') {
+                els.modeFixed.className = "flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-gray-800 transition-all";
+                els.modeSmart.className = "flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 transition-all";
+                els.controlsFixed.classList.remove('hidden');
+                els.controlsSmart.classList.add('hidden');
+            } else {
+                els.modeSmart.className = "flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-gray-800 transition-all";
+                els.modeFixed.className = "flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 transition-all";
+                els.controlsSmart.classList.remove('hidden');
+                els.controlsFixed.classList.add('hidden');
+            }
+        }
+
+        // Live Value Updates
+        els.fixedLength.addEventListener('input', (e) => els.valFixedLen.textContent = e.target.value + 's');
+        els.repeats.addEventListener('input', (e) => els.valRepeats.textContent = e.target.value + 'x');
+        els.repeatsSmart.addEventListener('input', (e) => els.valRepeatsSmart.textContent = e.target.value + 'x');
+        els.minPause.addEventListener('input', (e) => els.valMinPause.textContent = e.target.value + 's');
+        els.silenceThresh.addEventListener('input', (e) => {
+            const v = parseInt(e.target.value);
+            let t = "Med";
+            if (v < 20) t = "Strict";
+            if (v > 60) t = "Loose";
+            els.valSilenceThresh.textContent = t + ` (${v})`;
+        });
+
+        // Playback Speed
+        els.playbackSpeed.addEventListener('input', (e) => {
+            const speed = e.target.value;
+            els.audioPlayer.playbackRate = speed;
+            els.speedVal.textContent = speed + 'x';
+        });
+
+        // Drag & Drop
+        els.dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.add('bg-blue-50', 'border-blue-300');
+        });
+        els.dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            els.dropZone.classList.remove('bg-blue-50', 'border-blue-300');
+        });
+
+        function resetUI() {
+            els.resultArea.classList.add('hidden');
+            els.statusArea.classList.add('hidden');
+            els.statusArea.innerHTML = '';
+            els.processBtn.disabled = false;
+        }
+
+        function updateStatus(msg, isError = false) {
+            els.statusArea.classList.remove('hidden');
+            els.statusArea.innerHTML = isError 
+                ? `<span class="text-red-500"><i class="fas fa-exclamation-circle mr-1"></i>${msg}</span>`
+                : `<i class="fas fa-circle-notch fa-spin mr-2 text-blue-500"></i>${msg}`;
+            
+            if (isError) els.processBtn.disabled = false;
+        }
+
+        // --- Core Processing Logic ---
+
+        els.processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return updateStatus("Please upload a file first.", true);
+
+            els.processBtn.disabled = true;
+            updateStatus("Decoding Audio...");
+
+            try {
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                // Start Heavy Processing after slight delay to let UI render
+                setTimeout(async () => {
+                    try {
+                        const chunks = processingMode === 'fixed' 
+                            ? getFixedChunks(audioBuffer) 
+                            : getSilenceChunks(audioBuffer);
+
+                        if (chunks.length === 0) throw new Error("No chunks found. Try adjusting settings.");
+
+                        updateStatus(`Stitching ${chunks.length} chunks...`);
+                        
+                        // Process and Encode
+                        const repeats = processingMode === 'fixed' 
+                            ? parseInt(els.repeats.value) 
+                            : parseInt(els.repeatsSmart.value);
+                        
+                        const mp3Blob = await generateRepeatedMp3(audioBuffer, chunks, repeats);
+                        
+                        // Finish
+                        const url = URL.createObjectURL(mp3Blob);
+                        els.audioPlayer.src = url;
+                        // Reset speed
+                        els.audioPlayer.playbackRate = parseFloat(els.playbackSpeed.value); 
+                        
+                        els.downloadLink.href = url;
+                        els.downloadLink.download = `driller-${selectedFile.name.replace(/\.[^/.]+$/, "")}.mp3`;
+                        
+                        els.resultArea.classList.remove('hidden');
+                        els.statusArea.classList.add('hidden');
+                        els.processBtn.disabled = false;
+                        els.processBtn.innerHTML = `<span><i class="fas fa-check mr-2"></i>Done!</span>`;
+                        setTimeout(() => els.processBtn.innerHTML = `<span><i class="fas fa-magic mr-2"></i>Process Audio</span>`, 3000);
+
+                    } catch (err) {
+                        console.error(err);
+                        updateStatus(err.message || "Error during processing.", true);
+                    }
+                }, 100);
+
+            } catch (err) {
+                console.error(err);
+                updateStatus("Could not read audio file.", true);
+            }
+        });
+
+        // Logic: Calculate Split Points (Fixed)
+        function getFixedChunks(buffer) {
+            const chunkDuration = parseFloat(els.fixedLength.value);
+            const totalDuration = buffer.duration;
+            const chunks = [];
+            for (let time = 0; time < totalDuration; time += chunkDuration) {
+                chunks.push({
+                    start: time,
+                    end: Math.min(time + chunkDuration, totalDuration)
+                });
+            }
+            return chunks;
+        }
+
+        // Logic: Calculate Split Points (Silence Detection)
+        function getSilenceChunks(buffer) {
+            const data = buffer.getChannelData(0); // Analyze left channel
+            const sampleRate = buffer.sampleRate;
+            
+            // User Inputs
+            // Threshold: slider 1-100. Map to 0.001 to 0.05
+            // 1 -> 0.0001, 100 -> 0.05
+            const sliderVal = parseInt(els.silenceThresh.value);
+            const threshold = (sliderVal / 100) * 0.05; 
+            
+            const minSilenceDuration = parseFloat(els.minPause.value);
+            const minSilenceSamples = minSilenceDuration * sampleRate;
+            
+            const chunks = [];
+            let chunkStart = 0;
+            let silenceStart = null;
+
+            for (let i = 0; i < data.length; i++) {
+                // Check absolute amplitude
+                if (Math.abs(data[i]) < threshold) {
+                    if (silenceStart === null) silenceStart = i;
+                    
+                    // If silence is long enough, we found a potential break point
+                    if ((i - silenceStart) > minSilenceSamples) {
+                        // We found a valid break.
+                        // But we don't want to cut *immediately* when we hit minSilence.
+                        // We want to verify this is a real gap. 
+                        // Let's create a chunk from chunkStart to silenceStart (plus a little fade out?)
+                        
+                        // Enforce minimum chunk length (e.g. 0.5s) to avoid glitchy micro-cuts
+                        if ((silenceStart - chunkStart) > (sampleRate * 0.5)) {
+                            
+                            // Add the chunk
+                            chunks.push({
+                                start: chunkStart / sampleRate,
+                                end: (silenceStart + (minSilenceSamples/2)) / sampleRate // Cut in middle of silence
+                            });
+                            
+                            // Reset for next chunk
+                            chunkStart = silenceStart + (minSilenceSamples/2);
+                            silenceStart = null; 
+                            
+                            // Fast forward i? No, let the loop continue naturally but we reset silenceStart
+                            // Actually, if we are in deep silence, we just keep sliding chunkStart forward
+                            // until noise starts again.
+                            
+                            // OPTIMIZATION: Skip ahead until noise?
+                            // This simple logic might create many gaps.
+                            // Let's try: While silent, just keep updating chunkStart.
+                            // But we need to find when noise STARTS again to set the true chunkStart.
+                        }
+                    }
+                } else {
+                    // Noise detected.
+                    if (silenceStart !== null) {
+                         // We just came out of silence (that wasn't long enough to trigger a cut)
+                         silenceStart = null;
+                    }
+                }
+            }
+            
+            // Add final chunk
+            if (chunkStart < data.length) {
+                chunks.push({
+                    start: chunkStart / sampleRate,
+                    end: data.length / sampleRate
+                });
+            }
+
+            return chunks;
+        }
+
+        // Logic: Generate MP3
+        async function generateRepeatedMp3(audioBuffer, chunks, repeats) {
+            updateStatus("Encoding MP3...");
+            
+            // Check for lamejs
+            if (typeof lamejs === 'undefined') {
+                throw new Error("MP3 Encoder library failed to load. Please check internet connection.");
+            }
+
+            const channels = audioBuffer.numberOfChannels;
+            const sampleRate = audioBuffer.sampleRate;
+            
+            // Initialize Encoder
+            // Note: lamejs supports Mono or Stereo.
+            // If original is > 2 channels, we just take first 2.
+            const mp3Encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128); // 128kbps
+            const mp3Data = [];
+
+            // Helper to process a Float32 array into Int16
+            const floatTo16Bit = (input) => {
+                const output = new Int16Array(input.length);
+                for (let i = 0; i < input.length; i++) {
+                    const s = Math.max(-1, Math.min(1, input[i]));
+                    output[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                return output;
+            };
+
+            // Loop through chunks
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const startSample = Math.floor(chunk.start * sampleRate);
+                const endSample = Math.floor(chunk.end * sampleRate);
+                const length = endSample - startSample;
+
+                // Extract channel data for this chunk
+                const leftChunk = audioBuffer.getChannelData(0).slice(startSample, endSample);
+                const rightChunk = channels > 1 
+                    ? audioBuffer.getChannelData(1).slice(startSample, endSample) 
+                    : null;
+
+                // Convert to Int16
+                const leftInt16 = floatTo16Bit(leftChunk);
+                const rightInt16 = rightChunk ? floatTo16Bit(rightChunk) : undefined;
+
+                // Repeat Logic
+                for (let r = 0; r < repeats; r++) {
+                    // Encode in blocks of 1152 (MP3 frame size) is standard, but lamejs handles buffers.
+                    // We feed the whole chunk.
+                    const mp3buf = channels === 1 
+                        ? mp3Encoder.encodeBuffer(leftInt16) 
+                        : mp3Encoder.encodeBuffer(leftInt16, rightInt16);
+                    
+                    if (mp3buf.length > 0) mp3Data.push(mp3buf);
+                }
+                
+                // Yield to UI thread every few chunks so browser doesn't freeze
+                if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+            }
+
+            // Flush encoder
+            const mp3buf = mp3Encoder.flush();
+            if (mp3buf.length > 0) mp3Data.push(mp3buf);
+
+            return new Blob(mp3Data, { type: 'audio/mp3' });
+        }
+
+    </script>
+</body>
+</html>
